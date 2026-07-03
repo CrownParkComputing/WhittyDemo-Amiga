@@ -20,6 +20,10 @@ extern unsigned char demo_pal[256][3];
 /* One-time init: builds palette, gradient, reveal permutation. */
 void demo_init(int w, int h);
 
+/* Scroller text variant: 0 = standalone demo (default), 1 = Chase H.Q. game
+ * boot intro ("PRESS FIRE TO START THE GAME"). */
+void demo_set_text_variant(int v);
+
 /* Render one frame into fb (w*h pens). Pure function of tick. */
 void demo_frame(unsigned char *fb, int tick);
 

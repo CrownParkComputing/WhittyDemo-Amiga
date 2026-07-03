@@ -74,6 +74,7 @@ static void music_stop(void)
     }
 }
 
+/* 0 = keep running, 1 = fire/mouse (proceed -> rc 0), 2 = ESC (quit -> rc 5) */
 static int want_exit(struct Window *win)
 {
     struct IntuiMessage *msg;
@@ -83,23 +84,29 @@ static int want_exit(struct Window *win)
         UWORD code = msg->Code;
         ReplyMsg((struct Message *)msg);
         if (cls == IDCMP_RAWKEY && !(code & 0x80)) {
-            if ((code & 0x7f) == KEY_ESC) quit = 1;
+            if ((code & 0x7f) == KEY_ESC) quit = 2;
         }
-        if (cls == IDCMP_MOUSEBUTTONS && code == SELECTDOWN) quit = 1;
-        if (cls == IDCMP_CLOSEWINDOW) quit = 1;
+        if (cls == IDCMP_MOUSEBUTTONS && code == SELECTDOWN && !quit) quit = 1;
+        if (cls == IDCMP_CLOSEWINDOW) quit = 2;
     }
-    if (!(CIAA_PRA & P1_FIRE)) quit = 1;     /* joystick fire */
+    if (!quit && !(CIAA_PRA & P1_FIRE)) quit = 1;   /* joystick fire */
     return quit;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     struct Screen *scr = 0;
     struct Window *win = 0;
     unsigned char *fb = 0;
     static ULONG loadrgb[1 + 256 * 3 + 1];
     ULONG modeid;
-    int tick = 0, i;
+    int tick = 0, i, quit = 0;
+
+    /* "WhittyDemo GAME" = boot intro in front of a game: scroller says PRESS
+     * FIRE TO START; exit rc tells the startup-sequence what the user chose
+     * (fire/mouse -> rc 0 = run the game, ESC -> rc 5/WARN = quit). */
+    if (argc > 1 && argv[1] && argv[1][0] == 'G')
+        demo_set_text_variant(1);
 
     modeid = BestModeID(BIDTAG_NominalWidth, SCR_W,
                         BIDTAG_NominalHeight, SCR_H,
@@ -165,7 +172,7 @@ int main(void)
         WriteChunkyPixels(win->RPort, 0, 0, SCR_W - 1, SCR_H - 1, fb, SCR_W);
         WaitTOF();
         tick++;
-        if (tick > 8 && want_exit(win))
+        if (tick > 8 && (quit = want_exit(win)) != 0)
             break;
     }
 
@@ -173,5 +180,5 @@ int main(void)
     FreeMem(fb, SCR_W * SCR_H);
     CloseWindow(win);
     CloseScreen(scr);
-    return 0;
+    return quit == 2 ? 5 : 0;      /* 5 = RETURN_WARN: ESC / quit requested */
 }

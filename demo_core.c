@@ -527,12 +527,28 @@ static const char scroll_text[] =
     "EVERYWHERE ...   CODED BY CLAUDE FOR JON IN 2026 ...   "
     "PRESS ESC OR FIRE TO EXIT ...   AND NOW WE WRAP AROUND       ";
 
+/* variant 1: boot intro for the Chase H.Q. game HDF */
+static const char scroll_text_game[] =
+    "                WHITTY ARCADE PRESENTS ...   CHASE H.Q. BY TAITO 1988 "
+    "...   DUAL 68000 PLUS Z80 PLUS YM2610 - ALL EMULATED LIVE ON YOUR "
+    "AMIGA ...   NANCY HERE - WE GOT AN EMERGENCY ...   GET THE SUSPECT "
+    "VEHICLE ...   PRESS FIRE TO START THE GAME ...   ESC QUITS "
+    "...   PAULA IS SINGING OUR MOD TUNE ON ALL FOUR CHANNELS "
+    "...   GREETINGS TO ALL AMIGA ARCADE FANS EVERYWHERE ...   "
+    "AND NOW WE WRAP AROUND       ";
+
+static int text_variant;
+void demo_set_text_variant(int v) { text_variant = v; }
+
 static void draw_scroller(unsigned char *fb, int tick)
 {
     const int scale = 6;
-    int tw = (int)(sizeof(scroll_text) - 1) * 6 * scale;
+    const char *text = text_variant ? scroll_text_game : scroll_text;
+    int textlen = text_variant ? (int)(sizeof(scroll_text_game) - 1)
+                               : (int)(sizeof(scroll_text) - 1);
+    int tw = textlen * 6 * scale;
     int x = W - ((tick * 4) % (tw + W));
-    const char *s = scroll_text;
+    const char *s = text;
     for (; *s; s++, x += 6 * scale) {
         int wave;
         if (x < -5 * scale || x >= W) continue;
