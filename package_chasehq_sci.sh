@@ -31,6 +31,8 @@ CHQ_SCI_PIC="$HERE/assets/pic_chasehq_sci_sq.png"   # 550x275 two-square composi
 TEMPLATE_UAE="/home/jon/Amiberry/Configurations/ChaseHQDemo-RTG.uae"  # runs the 864x486 selector already
 INST_DIR="/home/jon/Amiberry/HardDrives/ChaseHQ_SCI_RTG_HD"
 INST_UAE="/home/jon/Amiberry/Configurations/ChaseHQ_SCI-RTG.uae"
+# ChaseHQDemo template was removed on this setup -> fall back to our own config
+[ -f "$TEMPLATE_UAE" ] || TEMPLATE_UAE="$INST_UAE"
 
 [ -f "$BASE_HDF" ]     || { echo "missing base hdf: $BASE_HDF" >&2; exit 1; }
 [ -f "$CHQ_EXE" ]      || { echo "missing Chase H.Q. exe: $CHQ_EXE" >&2; exit 1; }
@@ -148,10 +150,13 @@ rm -rf "$INST_DIR"
 cp -a "$BUILD" "$INST_DIR"
 
 # --- UAE config: ChaseHQDemo (proven 864x486 selector) -> directory mount ---
-# Disable sound_auto so the ptplayer mod in the loader always plays (sound_auto
-# can gate low-activity Paula audio like a tracker tune). NOTE: RTG fullscreen
-# (gfx_fullscreen_picasso=true) was tried but broke the boot on this setup, so
-# the display stays windowed at native RTG size.
+# - sound_auto=false so the ptplayer mod in the loader always plays.
+# - RTG FULLSCREEN: fill the monitor (uaegfx scales the 864x486 / 640x480 RTG
+#   screens up, aspect kept). Exclusive fullscreen MUST target a real monitor
+#   mode or it black-screens -- so gfx_*_fullscreen is set to the detected
+#   native desktop resolution, not the RTG size.
+FS_RES="$(cat /sys/class/drm/*/modes 2>/dev/null | grep -m1 -E '^[0-9]+x[0-9]+' || echo '1920x1080')"
+FS_W="${FS_RES%x*}"; FS_H="${FS_RES#*x}"
 CFG="$HERE/dist/ChaseHQ_SCI-RTG.uae"
 sed \
   -e "1s|.*|; Chase H.Q. + S.C.I. Taito Z Double Bill -- WhittyDemo selector config.|" \
@@ -160,10 +165,16 @@ sed \
   -e "s|^hardfile2=.*|filesystem2=rw,DH0:CHQSCI:$INST_DIR,1|" \
   -e "s|^uaehf0=.*|uaehf0=dir,rw,DH0:CHQSCI:$INST_DIR,1|" \
   -e "s|^sound_auto=.*|sound_auto=false|" \
+  -e "s|^gfx_fullscreen=.*|gfx_fullscreen=1|" \
+  -e "s|^gfx_fullscreen_picasso=.*|gfx_fullscreen_picasso=true|" \
+  -e "s|^gfx_width_fullscreen=.*|gfx_width_fullscreen=$FS_W|" \
+  -e "s|^gfx_height_fullscreen=.*|gfx_height_fullscreen=$FS_H|" \
   -e "s|^log_file=.*|log_file=/tmp/amiberry-chqsci-rtg.log|" \
   "$TEMPLATE_UAE" > "$CFG"
-grep -q "^log_file=" "$CFG"   || printf 'log_file=/tmp/amiberry-chqsci-rtg.log\n' >> "$CFG"
-grep -q "^sound_auto=" "$CFG" || printf 'sound_auto=false\n' >> "$CFG"
+grep -q "^log_file=" "$CFG"               || printf 'log_file=/tmp/amiberry-chqsci-rtg.log\n' >> "$CFG"
+grep -q "^sound_auto=" "$CFG"             || printf 'sound_auto=false\n' >> "$CFG"
+grep -q "^gfx_fullscreen=" "$CFG"         || printf 'gfx_fullscreen=1\n' >> "$CFG"
+grep -q "^gfx_fullscreen_picasso=" "$CFG" || printf 'gfx_fullscreen_picasso=true\n' >> "$CFG"
 cp -f "$CFG" "$INST_UAE"
 
 echo "installed: $INST_DIR"
