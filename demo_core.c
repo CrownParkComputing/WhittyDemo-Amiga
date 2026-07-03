@@ -9,7 +9,7 @@ extern const unsigned char demo_pic_pal[][3];
 extern const unsigned char demo_pic_data[];
 
 #define PIC_PEN_BASE 96
-#define PIC_MAX_W    375
+#define PIC_MAX_W    560   /* fits the 550-wide Chase HQ + S.C.I. two-square composite */
 #define PIC_MAX_H    300
 #define BLOCK        25
 #define MAX_BLOCKS   ((PIC_MAX_W / BLOCK) * (PIC_MAX_H / BLOCK))
@@ -527,7 +527,19 @@ static const char scroll_text[] =
     "EVERYWHERE ...   CODED BY CLAUDE FOR JON IN 2026 ...   "
     "PRESS ESC OR FIRE TO EXIT ...   AND NOW WE WRAP AROUND       ";
 
-/* variant 1: boot intro for the Chase H.Q. game HDF */
+/* variant 1: boot intro in front of a game HDF. Which game is named is chosen
+ * at build time (-DGAME_PDRIFT -> Power Drift, default -> Chase H.Q.); the
+ * WhittyDemo binary is rebuilt per game anyway because the picture is baked in. */
+#ifdef GAME_PDRIFT
+static const char scroll_text_game[] =
+    "                WHITTY ARCADE PRESENTS ...   POWER DRIFT BY SEGA 1988 "
+    "...   SEGA Y-BOARD - 68000 CPUS PLUS Z80 PLUS YM2151 AND SEGA PCM - "
+    "ALL EMULATED LIVE ON YOUR AMIGA ...   GET READY TO RACE ...   FLOOR IT "
+    "THROUGH THE COURSES ...   PRESS FIRE TO START THE GAME ...   ESC QUITS "
+    "...   PAULA IS SINGING OUR MOD TUNE ON ALL FOUR CHANNELS "
+    "...   GREETINGS TO ALL AMIGA ARCADE FANS EVERYWHERE ...   "
+    "AND NOW WE WRAP AROUND       ";
+#else
 static const char scroll_text_game[] =
     "                WHITTY ARCADE PRESENTS ...   CHASE H.Q. BY TAITO 1988 "
     "...   DUAL 68000 PLUS Z80 PLUS YM2610 - ALL EMULATED LIVE ON YOUR "
@@ -536,16 +548,29 @@ static const char scroll_text_game[] =
     "...   PAULA IS SINGING OUR MOD TUNE ON ALL FOUR CHANNELS "
     "...   GREETINGS TO ALL AMIGA ARCADE FANS EVERYWHERE ...   "
     "AND NOW WE WRAP AROUND       ";
+#endif
 
 static int text_variant;
+static int selector_selection;
 void demo_set_text_variant(int v) { text_variant = v; }
+void demo_set_selector_selection(int sel) { selector_selection = sel ? 1 : 0; }
 
 static void draw_scroller(unsigned char *fb, int tick)
 {
     const int scale = 6;
-    const char *text = text_variant ? scroll_text_game : scroll_text;
-    int textlen = text_variant ? (int)(sizeof(scroll_text_game) - 1)
-                               : (int)(sizeof(scroll_text) - 1);
+    static const char scroll_text_selector[] =
+        "                WHITTY ARCADE PRESENTS THE TAITO Z DOUBLE BILL "
+        "...   CHASE H.Q. BY TAITO 1988 - YOU ARE NANCY - RAM THE SUSPECT "
+        "CAR BEFORE TIME RUNS OUT ...   S.C.I. SPECIAL CRIMINAL "
+        "INVESTIGATION 1989 - THE SEQUEL - NOW YOU HAVE A GUN AND EVEN "
+        "MORE CARNAGE ...   LEFT AND RIGHT PICK A GAME - FIRE OR RETURN "
+        "STARTS IT - ESC QUITS ...   BOTH RUN THE REAL DUAL 68000 ARCADE "
+        "BOARD LIVE ON YOUR AMIGA ...   AND NOW WE WRAP AROUND       ";
+    const char *text = text_variant == 2 ? scroll_text_selector :
+                       (text_variant ? scroll_text_game : scroll_text);
+    int textlen = text_variant == 2 ? (int)(sizeof(scroll_text_selector) - 1) :
+                  (text_variant ? (int)(sizeof(scroll_text_game) - 1)
+                                : (int)(sizeof(scroll_text) - 1));
     int tw = textlen * 6 * scale;
     int x = W - ((tick * 4) % (tw + W));
     const char *s = text;
@@ -576,6 +601,97 @@ static void draw_title(unsigned char *fb, int tick)
                     fill_rect(fb, x + gx * scale, 16 + wave + gy * scale, scale, scale, pen);
                 }
     }
+}
+
+/* wavy thick rainbow text, horizontally centred (the chosen game's name) */
+static void draw_wavy_center(unsigned char *fb, const char *s, int y, int scale, int tick)
+{
+    int x = (W - text_width(s, scale)) / 2;
+    for (; *s; s++, x += 6 * scale) {
+        int wave = (isin(tick * 600 + x * 90) * 9) >> 12;
+        if (*s != ' ') draw_glyph_rainbow(fb, *s, x, y + wave, scale, tick);
+    }
+}
+
+/* thick pulsing/solid frame of thickness b around an x,y,w,h box */
+static void frame_box(unsigned char *fb, int x, int y, int w, int h,
+                      int b, unsigned char pen)
+{
+    fill_rect(fb, x - b, y - b, w + 2 * b, b, pen);        /* top    */
+    fill_rect(fb, x - b, y + h, w + 2 * b, b, pen);        /* bottom */
+    fill_rect(fb, x - b, y - b, b, h + 2 * b, pen);        /* left   */
+    fill_rect(fb, x + w, y - b, b, h + 2 * b, pen);        /* right  */
+}
+
+/* blit one revealed BLOCKxBLOCK tile of the composite (or a white flash) */
+static void blit_block(unsigned char *fb, int dx, int dy, int sx, int sy,
+                       int flash)
+{
+    int row;
+    unsigned char *dst = fb + (long)dy * W + dx;
+    const unsigned char *src = pic_pens + (long)sy * demo_pic_w + sx;
+    for (row = 0; row < BLOCK; row++) {
+        if (flash) memset(dst, 15, BLOCK);
+        else       memcpy(dst, src, BLOCK);
+        dst += W;
+        src += demo_pic_w;
+    }
+}
+
+/* Two-game selector. The baked picture is a 2S x S composite: left square =
+ * CHASE H.Q. art, right square = S.C.I. art. Two square panels are drawn side
+ * by side; ONLY the selected game's panel is unveiled (a diagonal wipe that
+ * replays each time you switch), the other stays dark. Big < > chevrons point
+ * at the pick and the chosen game is named in wavy thick rainbow up top.
+ * LEFT/RIGHT choose (selection 0 = Chase H.Q., 1 = S.C.I.); no on-screen
+ * controls line -- the scroller narrates them. */
+static void draw_selector(unsigned char *fb, int tick)
+{
+    static int sel_prev = -1, sel_change_tick;
+    const int GAP = 30, b = 5;
+    int S = demo_pic_h;                         /* square side (composite is 2S wide) */
+    int bps = S / BLOCK;                         /* blocks per square edge */
+    int ox = (W - (2 * S + GAP)) / 2;
+    int oy = CY - S / 2;
+    int lpx = ox, rpx = ox + S + GAP;
+    int selpx = selector_selection ? rpx : lpx;
+    int src_col0 = selector_selection ? S : 0;   /* selected square's source column */
+    int cy = oy + S / 2, i, c, r, diag, maxdiag;
+    unsigned char hl = (unsigned char)(P_RAINBOW + ((tick >> 1) & 31));
+    unsigned char lp = selector_selection ? 14 : hl;   /* chevron: picked side glows */
+    unsigned char rp = selector_selection ? hl : 14;
+
+    /* restart the unveil each time the selection changes */
+    if (selector_selection != sel_prev) { sel_prev = selector_selection; sel_change_tick = tick; }
+    diag = (tick - sel_change_tick) / 3;         /* one diagonal every 3 frames */
+    maxdiag = 2 * (bps - 1);
+
+    /* both panels start dark; only the selected one gets unveiled art */
+    fill_rect(fb, lpx, oy, S, S, 0);
+    fill_rect(fb, rpx, oy, S, S, 0);
+    for (r = 0; r < bps; r++)
+        for (c = 0; c < bps; c++) {
+            int d = c + r;
+            if (d > diag) continue;              /* not yet unveiled */
+            blit_block(fb, selpx + c * BLOCK, oy + r * BLOCK,
+                       src_col0 + c * BLOCK, r * BLOCK,
+                       d == diag && diag <= maxdiag);
+        }
+
+    /* frames: dim grey around the unpicked panel, pulsing rainbow around the pick */
+    frame_box(fb, selector_selection ? lpx : rpx, oy, S, S, b, 14);
+    frame_box(fb, selpx, oy, S, S, b, hl);
+
+    /* big < > chevrons outside each panel, pointing in; the picked side glows */
+    for (i = 0; i < 22; i++) {
+        fill_rect(fb, lpx - 44 + i, cy - i, 6, 5, lp);
+        fill_rect(fb, lpx - 44 + i, cy + i, 6, 5, lp);
+        fill_rect(fb, rpx + S + 38 - i, cy - i, 6, 5, rp);
+        fill_rect(fb, rpx + S + 38 - i, cy + i, 6, 5, rp);
+    }
+
+    /* chosen game name (wavy thick rainbow) up top */
+    draw_wavy_center(fb, selector_selection ? "S.C.I." : "CHASE H.Q.", 20, 8, tick);
 }
 
 /* ---- init / frame -------------------------------------------------------- */
@@ -636,18 +752,26 @@ void demo_frame(unsigned char *fb, int tick)
     draw_bars(fb, tick);
     draw_stars(fb, tick);
 
-    build_scene(tick);
+    if (text_variant == 0) {
+        build_scene(tick);
 
-    for (i = 0; i < nfaces; i++)              /* ring behind the picture */
-        if (faces[i].z > 0)
-            fill_face(fb, &faces[i]);
+        for (i = 0; i < nfaces; i++)          /* ring behind the picture */
+            if (faces[i].z > 0)
+                fill_face(fb, &faces[i]);
+    }
 
-    draw_picture(fb, tick);
+    if (text_variant != 2)                    /* selector draws its own panels */
+        draw_picture(fb, tick);
 
-    for (i = 0; i < nfaces; i++)              /* ring in front */
-        if (faces[i].z <= 0)
-            fill_face(fb, &faces[i]);
+    if (text_variant == 0) {
+        for (i = 0; i < nfaces; i++)          /* ring in front */
+            if (faces[i].z <= 0)
+                fill_face(fb, &faces[i]);
+    }
 
-    draw_title(fb, tick);
+    if (text_variant != 2)
+        draw_title(fb, tick);
+    if (text_variant == 2)
+        draw_selector(fb, tick);
     draw_scroller(fb, tick);
 }

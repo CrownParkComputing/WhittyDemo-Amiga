@@ -20,9 +20,18 @@
 #define R_DMACON  (0x096/2)
 #define R_INTENA  (0x09a/2)
 #define R_INTREQ  (0x09c/2)
+#define R_JOY1DAT (0x00c/2)
 #define CIAA_PRA  (*(volatile unsigned char *)0xbfe001)
 #define P1_FIRE   0x80
+#define KEY_1     0x01
+#define KEY_2     0x02
+#define KEY_SPACE 0x40
+#define KEY_RET   0x44
+#define KEY_LEFT  0x4f
+#define KEY_RIGHT 0x4e
 #define KEY_ESC   0x45
+#define KEY_UP    0x4c
+#define KEY_DOWN  0x4d
 
 /* shared ptplayer + supervisor VBR fetch (ArcadeIntro glue) */
 extern void tc_pt_install(void *vbr, long palflag);
@@ -74,23 +83,70 @@ static void music_stop(void)
     }
 }
 
-/* 0 = keep running, 1 = fire/mouse (proceed -> rc 0), 2 = ESC (quit -> rc 5) */
-static int want_exit(struct Window *win)
+/* Non-selector: -1 keep running, 0 proceed, 5 quit.
+ * Selector:     -1 keep running, 0 1943, 5 1943 Kai, 10 quit. */
+static int poll_input(struct Window *win, int selector, int *selection)
 {
     struct IntuiMessage *msg;
-    int quit = 0;
+    int rc = -1;
+    UWORD joy;
+    static int fire_was_down = 1;
+    static int joy_left_was_down = 0;
+    static int joy_right_was_down = 0;
     while ((msg = (struct IntuiMessage *)GetMsg(win->UserPort))) {
         ULONG cls = msg->Class;
         UWORD code = msg->Code;
+        WORD mouse_x = msg->MouseX;
         ReplyMsg((struct Message *)msg);
         if (cls == IDCMP_RAWKEY && !(code & 0x80)) {
-            if ((code & 0x7f) == KEY_ESC) quit = 2;
+            UWORD key = code & 0x7f;
+            if (key == KEY_ESC) rc = selector ? 10 : 5;
+            else if (selector && key == KEY_1) rc = 0;
+            else if (selector && key == KEY_2) rc = 5;
+            else if (selector && key == KEY_LEFT) {
+                *selection = 0;
+                demo_set_selector_selection(*selection);
+            } else if (selector && key == KEY_RIGHT) {
+                *selection = 1;
+                demo_set_selector_selection(*selection);
+            } else if (selector && (key == KEY_RET || key == KEY_SPACE)) {
+                rc = *selection ? 5 : 0;
+            }
         }
-        if (cls == IDCMP_MOUSEBUTTONS && code == SELECTDOWN && !quit) quit = 1;
-        if (cls == IDCMP_CLOSEWINDOW) quit = 2;
+        if (cls == IDCMP_MOUSEBUTTONS && code == SELECTDOWN && rc < 0) {
+            if (selector) {
+                *selection = mouse_x >= (SCR_W / 2) ? 1 : 0;
+                demo_set_selector_selection(*selection);
+                rc = *selection ? 5 : 0;
+            } else {
+                rc = 0;
+            }
+        }
+        if (cls == IDCMP_CLOSEWINDOW) rc = selector ? 10 : 5;
     }
-    if (!quit && !(CIAA_PRA & P1_FIRE)) quit = 1;   /* joystick fire */
-    return quit;
+    if (selector) {
+        int fire_down = !(CIAA_PRA & P1_FIRE);
+        int joy_left, joy_right;
+        joy = CUSTOM_REGS[R_JOY1DAT];
+        joy_left  = !!(joy & 0x0200);      /* JOY1DAT bit9 = left  */
+        joy_right = !!(joy & 0x0002);      /* JOY1DAT bit1 = right */
+        if (joy_left && !joy_left_was_down) {
+            *selection = 0;
+            demo_set_selector_selection(*selection);
+        }
+        if (joy_right && !joy_right_was_down) {
+            *selection = 1;
+            demo_set_selector_selection(*selection);
+        }
+        if (fire_down && !fire_was_down && rc < 0)
+            rc = *selection ? 5 : 0;
+        fire_was_down = fire_down;
+        joy_left_was_down = joy_left;
+        joy_right_was_down = joy_right;
+    } else if (!(CIAA_PRA & P1_FIRE) && rc < 0) {
+        rc = 0;                                      /* joystick fire */
+    }
+    return rc;
 }
 
 int main(int argc, char **argv)
@@ -101,12 +157,18 @@ int main(int argc, char **argv)
     static ULONG loadrgb[1 + 256 * 3 + 1];
     ULONG modeid;
     int tick = 0, i, quit = 0;
+    int selector = 0, selection = 0;
 
     /* "WhittyDemo GAME" = boot intro in front of a game: scroller says PRESS
      * FIRE TO START; exit rc tells the startup-sequence what the user chose
      * (fire/mouse -> rc 0 = run the game, ESC -> rc 5/WARN = quit). */
     if (argc > 1 && argv[1] && argv[1][0] == 'G')
         demo_set_text_variant(1);
+    if (argc > 1 && argv[1] && argv[1][0] == 'S') {
+        selector = 1;
+        demo_set_text_variant(2);
+        demo_set_selector_selection(selection);
+    }
 
     modeid = BestModeID(BIDTAG_NominalWidth, SCR_W,
                         BIDTAG_NominalHeight, SCR_H,
@@ -172,7 +234,7 @@ int main(int argc, char **argv)
         WriteChunkyPixels(win->RPort, 0, 0, SCR_W - 1, SCR_H - 1, fb, SCR_W);
         WaitTOF();
         tick++;
-        if (tick > 8 && (quit = want_exit(win)) != 0)
+        if (tick > 8 && (quit = poll_input(win, selector, &selection)) >= 0)
             break;
     }
 
@@ -180,5 +242,5 @@ int main(int argc, char **argv)
     FreeMem(fb, SCR_W * SCR_H);
     CloseWindow(win);
     CloseScreen(scr);
-    return quit == 2 ? 5 : 0;      /* 5 = RETURN_WARN: ESC / quit requested */
+    return quit;      /* selector: 0=1943, 5=Kai, 10=quit; game: 0=start, 5=quit */
 }

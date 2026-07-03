@@ -11,7 +11,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BASE_HDF="/home/jon/Amiberry/HardDrives/RTG_boot_template.hdf"
-CHASEHQ_EXE="/home/jon/AmigaArcadePorts/Taito_Z_System/Chase_HQ/dist/WhittyArcade_HD/Games/ChaseHQ/Chase HQ"
+CHASEHQ_EXE="/home/jon/TaitoZ-Amiga/dist/Chase HQ v2"   # 8-bit pen8 build w/ bezel + F10 DIP editor
 TEMPLATE_UAE="/home/jon/AmigaArcadePorts/Taito_Z_System/Chase_HQ/dist/Chase HQ.uae"
 INST_HDF="/home/jon/Amiberry/HardDrives/ChaseHQDemo_RTG.hdf"
 INST_UAE="/home/jon/Amiberry/Configurations/ChaseHQDemo-RTG.uae"

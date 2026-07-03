@@ -8,19 +8,22 @@ export PATH="/home/jon/amiga-amigaos/bin:$HOME/.local/bin:$PATH"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PT="$HERE/ptplayer"
 OBJ="$HERE/build"
-GCC="m68k-amigaos-gcc -m68030 -noixemul -O2 -fomit-frame-pointer -DNDEBUG -I $HERE"
+GCC="m68k-amigaos-gcc -m68030 -noixemul -O2 -fomit-frame-pointer -DNDEBUG -I $HERE ${EXTRA_CFLAGS:-}"
 AS="m68k-amigaos-as -m68020"
 VASM="vasmm68k_mot -I $HERE -m68020 -phxass -nowarn=62 -Fhunk"
 
 mkdir -p "$OBJ"
 
-# regenerate picture + sine table if missing or source newer
-if [ ! -f "$HERE/demo_pic.c" ] || [ "$HERE/assets/pic_src.png" -nt "$HERE/demo_pic.c" ]; then
+# regenerate picture + sine table if missing, source newer, or a per-game build
+# is requested (PIC_SRC picks the source PNG, FORCE_ASSETS forces regeneration).
+PIC_SRC="${PIC_SRC:-$HERE/assets/pic_src.png}"
+export PIC_SRC
+if [ ! -f "$HERE/demo_pic.c" ] || [ "$PIC_SRC" -nt "$HERE/demo_pic.c" ] || [ -n "${FORCE_ASSETS:-}" ]; then
     python3 "$HERE/gen_assets.py"
 fi
 
 echo "=== host harness ==="
-cc -O2 -Wall -Wextra -I "$HERE" -o "$OBJ/host_demo" \
+cc -O2 -Wall -Wextra ${EXTRA_CFLAGS:-} -I "$HERE" -o "$OBJ/host_demo" \
     "$HERE/host_demo.c" "$HERE/demo_core.c" "$HERE/demo_pic.c"
 
 if [ "$1" = "host" ]; then
