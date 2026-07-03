@@ -83,6 +83,10 @@ Path >NIL: RAM: C: SYS:Utilities SYS:System S: SYS:Prefs SYS:WBStartup SYS:Tools
 Echo "Chase H.Q. - Whitty Arcade"
 Stack 65536
 
+; the WhittyDemo intro IS the loader -- suppress the game's own splash
+; (cc_rtg_main.c: whitty_no_game_loader() skips run_loader() when set)
+Echo >ENV:WHITTY_NO_GAME_LOADER "1" NOLINE
+
 Lab intro
 SYS:WhittyDemo GAME
 IF WARN
