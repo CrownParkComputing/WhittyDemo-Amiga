@@ -11,7 +11,7 @@ BASE_HDF="/home/jon/Amiberry/HardDrives/RTG_boot_template.hdf"
 TEMPLATE_UAE="/home/jon/Amiberry/Configurations/SkyKid-RTG.uae"
 INST_HDF="/home/jon/Amiberry/HardDrives/WhittyDemo_RTG.hdf"
 INST_UAE="/home/jon/Amiberry/Configurations/WhittyDemo-RTG.uae"
-. /home/jon/AmigaArcadePorts/tools/hdf_safety.sh
+. ./hdf_safety.sh
 
 [ -f "$HERE/WhittyDemo" ] || { echo "run ./build.sh first" >&2; exit 1; }
 mkdir -p "$HERE/dist"
