@@ -10,6 +10,8 @@
 #include <proto/exec.h>
 #include <proto/graphics.h>
 #include <proto/intuition.h>
+#include <proto/dos.h>
+#include <dos/dos.h>
 #include <string.h>
 #include "demo_core.h"
 
@@ -242,5 +244,17 @@ int main(int argc, char **argv)
     FreeMem(fb, SCR_W * SCR_H);
     CloseWindow(win);
     CloseScreen(scr);
-    return quit;      /* selector: 0=1943, 5=Kai, 10=quit; game: 0=start, 5=quit */
+
+    /* Selector: publish the pick as a marker FILE and let the startup-sequence
+     * dispatch with IF EXISTS. The return-code path is unreliable here because
+     * the startup's IF ERROR check (needed for quit) resets the code before the
+     * IF WARN check, so rc5 (S.C.I.) was falling through to Chase H.Q.; and an
+     * ENV var + $-substitution proved flaky too. A marker file is unambiguous. */
+    if (selector) {
+        const char *marker = quit >= 10 ? "T:WHITTY_QUIT" :
+                             quit >= 5  ? "T:WHITTY_SCI"  : "T:WHITTY_CHQ";
+        BPTR fh = Open((CONST_STRPTR)marker, MODE_NEWFILE);
+        if (fh) Close(fh);
+    }
+    return quit;      /* selector still returns 0/5/10 as a fallback; game: 0=start, 5=quit */
 }

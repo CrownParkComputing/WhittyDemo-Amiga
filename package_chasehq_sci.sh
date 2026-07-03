@@ -126,12 +126,16 @@ Stack 200000
 Echo >ENV:WHITTY_NO_GAME_LOADER "1" NOLINE
 
 Lab selector
+C:Delete >NIL: T:WHITTY_QUIT T:WHITTY_SCI T:WHITTY_CHQ QUIET
 SYS:WhittyDemo SELECT
-IF ERROR
+; WhittyDemo drops a marker file for the pick (T:WHITTY_SCI / _QUIT / _CHQ). We
+; dispatch with IF EXISTS, NOT the return code -- an IF ERROR before IF WARN
+; resets the code, which made rc5 (S.C.I.) fall through to Chase H.Q.
+IF EXISTS T:WHITTY_QUIT
   C:UAEquit
   EndCLI >NIL:
 EndIF
-IF WARN
+IF EXISTS T:WHITTY_SCI
   CD SYS:Games/SCI
   SCI
   CD SYS:
